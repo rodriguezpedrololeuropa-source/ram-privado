@@ -22,10 +22,8 @@ const fmtD = str => str ? new Date(str).toLocaleDateString("es-AR") : "";
 const DIAS = ["Dom","Lun","Mar","Mie","Jue","Vie","Sab"];
 
 async function api(action, params = {}) {
-  const res = await fetch(API, {
-    method: "POST",
-    body: JSON.stringify({ action, ...params }),
-  });
+  const query = new URLSearchParams({ action, ...Object.fromEntries(Object.entries(params).map(([k,v]) => [k, typeof v === "object" ? JSON.stringify(v) : v])) });
+  const res = await fetch(`${API}?${query.toString()}`);
   return res.json();
 }
 
