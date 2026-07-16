@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 
-const API = "https://script.google.com/macros/s/AKfycbywS7zkLkU7MhQfGrHCROofJoObrMSM8Wj9cQ2VuTejYyb6J5v2_Nu-N0h8aMG50JDk/exec";
+const API = "https://script.google.com/macros/s/AKfycbxgq93w-3tL0PArQdtsb6v0sYjpuvAxPp0P4GCq177YAuHJ03YmTsyVD45Plu3mVcJ-/exec";
 
 const BARBER_PASS = "ram2024";
 const GASTOS_PASS = "gastos2024";
@@ -22,8 +22,10 @@ const fmtD = str => str ? new Date(str).toLocaleDateString("es-AR") : "";
 const DIAS = ["Dom","Lun","Mar","Mie","Jue","Vie","Sab"];
 
 async function api(action, params = {}) {
-  const query = new URLSearchParams({ action, ...Object.fromEntries(Object.entries(params).map(([k,v]) => [k, typeof v === "object" ? JSON.stringify(v) : v])) });
-  const res = await fetch(`${API}?${query.toString()}`);
+  const res = await fetch(API, {
+    method: "POST",
+    body: JSON.stringify({ action, ...params }),
+  });
   return res.json();
 }
 
