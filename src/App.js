@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 
-const API = "https://script.google.com/macros/s/AKfycbxgq93w-3tL0PArQdtsb6v0sYjpuvAxPp0P4GCq177YAuHJ03YmTsyVD45Plu3mVcJ-/exec";
+const API = "https://script.google.com/macros/s/AKfycbw8-ZwQ23GvZufkXLMr_y-Pe49Md_PT4sS5DqiWCY8I0qy8-63E65rtvU2pIZSBI3Zw/exec";
 
 const BARBER_PASS = "ram2024";
 const GASTOS_PASS = "gastos2024";
