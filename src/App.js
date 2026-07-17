@@ -21,6 +21,31 @@ const fmtP = n => "$" + Number(n).toLocaleString("es-AR");
 const fmtD = str => str ? new Date(str).toLocaleDateString("es-AR") : "";
 const DIAS = ["Dom","Lun","Mar","Mie","Jue","Vie","Sab"];
 
+// --- Normalizadores: Google Sheets a veces devuelve las fechas como
+// "2026-07-18T03:00:00.000Z" y las horas como "1899-12-30T13:00:00.000Z".
+// Estas funciones las convierten siempre a "2026-07-18" y "13:00" para
+// que los turnos (privados y publicos) se vean bien en el Turnero. ---
+const normFecha = v => {
+  if (!v) return "";
+  const s = String(v).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (m) return `${m[3]}-${m[2].padStart(2,"0")}-${m[1].padStart(2,"0")}`;
+  const d = new Date(s);
+  if (!isNaN(d)) return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+  return s;
+};
+const normHora = v => {
+  if (v === null || v === undefined || v === "") return "";
+  const s = String(v).trim();
+  const m = s.match(/^(\d{1,2}):(\d{2})/);
+  if (m) return `${m[1].padStart(2,"0")}:${m[2]}`;
+  const d = new Date(s);
+  if (!isNaN(d)) return `${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
+  return s;
+};
+const normTurno = t => ({ ...t, Fecha: normFecha(t.Fecha || t.fecha), Hora: normHora(t.Hora || t.hora) });
+
 async function api(action, params = {}) {
   const res = await fetch(API, {
     method: "POST",
@@ -177,6 +202,16 @@ export default function App() {
 
   useEffect(() => { if (screen === "main" || screen === "gastos") loadAll(); }, [screen]);
 
+  // Refresco automatico: cada 60s recarga los turnos para ver
+  // los que sacan los clientes desde la app publica sin recargar la pagina.
+  useEffect(() => {
+    if (screen !== "main") return;
+    const id = setInterval(() => {
+      apiGet("TURNOS").then(t => { if (t.data) setTurnos(t.data.map(normTurno)); }).catch(() => {});
+    }, 60000);
+    return () => clearInterval(id);
+  }, [screen]);
+
   async function loadAll() {
     setLoading(true);
     const [s, g, c, t] = await Promise.all([
@@ -185,7 +220,7 @@ export default function App() {
     if (s.data) setServices(s.data);
     if (g.data) setGastos(g.data);
     if (c.data) setClientes(c.data);
-    if (t.data) setTurnos(t.data);
+    if (t.data) setTurnos(t.data.map(normTurno));
     setLoading(false);
   }
 
