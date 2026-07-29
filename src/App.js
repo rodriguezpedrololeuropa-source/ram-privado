@@ -183,6 +183,7 @@ export default function App() {
   const [step, setStep] = useState("svc");
   const [selSvc, setSelSvc] = useState(null);
   const [selPago, setSelPago] = useState(null);
+  const [precio, setPrecio] = useState(""); const [editPrecio, setEditPrecio] = useState(false);
   const [cliNom, setCliNom] = useState(""); const [cliTel, setCliTel] = useState(""); const [nota, setNota] = useState("");
   const [gDesc, setGDesc] = useState(""); const [gMonto, setGMonto] = useState("");
   const [period, setPeriod] = useState("todo");
@@ -230,9 +231,11 @@ export default function App() {
   async function confirmSvc() {
     if (!selSvc || !selPago) return;
     const sv = SVCS.find(s => s.id === selSvc);
-    await api("addServicio", { service: selSvc, price: sv.price, pago: selPago, note: nota, cliente_nombre: cliNom.trim() || "—", cliente_tel: cliTel });
+    const montoFinal = precio !== "" && !isNaN(Number(precio)) ? Number(precio) : sv.price;
+    await api("addServicio", { service: selSvc, price: montoFinal, pago: selPago, note: nota, cliente_nombre: cliNom.trim() || "—", cliente_tel: cliTel });
     await loadAll();
     setSelSvc(null); setSelPago(null); setCliNom(""); setCliTel(""); setNota(""); setStep("svc"); setNomSugs([]);
+    setPrecio(""); setEditPrecio(false);
     setSvcOk(true); setTimeout(() => setSvcOk(false), 2500);
   }
 
@@ -293,6 +296,12 @@ export default function App() {
   const bal = totIng - totGst;
   const turnosDelDia = turnos.filter(t => t.Fecha === selFecha).sort((a, b) => (a.Hora || "").localeCompare(b.Hora || ""));
   const today = new Date().toISOString().split("T")[0];
+
+  // Precio del servicio: usa el de la lista salvo que se haya cargado uno a mano.
+  const svcSel = SVCS.find(x => x.id === selSvc);
+  const precioBase = svcSel ? svcSel.price : 0;
+  const precioFinal = precio !== "" && !isNaN(Number(precio)) ? Number(precio) : precioBase;
+  const precioEditado = precio !== "" && Number(precio) !== precioBase;
 
   const FB = () => (
     <div className="fb">
@@ -462,7 +471,7 @@ export default function App() {
 
       <div className="tabs">
         {["registrar","turnero","dashboard","historial","clientes"].map((t,i)=>(
-          <button key={t} className={`tab${tab===t?" active":""}`} onClick={()=>{setTab(t);setStep("svc");setSelSvc(null);setSelPago(null);}}>
+          <button key={t} className={`tab${tab===t?" active":""}`} onClick={()=>{setTab(t);setStep("svc");setSelSvc(null);setSelPago(null);setPrecio("");setEditPrecio(false);}}>
             {["Registrar","Turnero","Resumen","Historial","Clientes"][i]}
           </button>
         ))}
@@ -480,19 +489,34 @@ export default function App() {
                 <div className="card-title">Paso 1 — Servicio</div>
                 <div className="svc-grid">
                   {SVCS.map(sv=>(
-                    <div key={sv.id} className={`svc-card${selSvc===sv.id?" active":""}`} onClick={()=>setSelSvc(sv.id)}>
+                    <div key={sv.id} className={`svc-card${selSvc===sv.id?" active":""}`} onClick={()=>{setSelSvc(sv.id);setPrecio("");setEditPrecio(false);}}>
                       <div className="cinzel" style={{ fontSize:12, color:"#fff", marginBottom:6 }}>{sv.label}</div>
-                      <div className="cinzel" style={{ fontSize:18, color:selSvc===sv.id?"#fff":"#444" }}>{fmtP(sv.price)}</div>
+                      <div className="cinzel" style={{ fontSize:18, color:selSvc===sv.id?"#fff":"#444" }}>{selSvc===sv.id?fmtP(precioFinal):fmtP(sv.price)}</div>
                     </div>
                   ))}
                 </div>
+                {selSvc && !editPrecio && (
+                  <button className="btn-sm" style={{ width:"100%", marginBottom:14 }} onClick={()=>{setPrecio(String(precioFinal));setEditPrecio(true);}}>
+                    ✎ Cambiar precio {precioEditado?"— "+fmtP(precioFinal):""}
+                  </button>
+                )}
+                {selSvc && editPrecio && (
+                  <div style={{ marginBottom:14 }}>
+                    <span className="field-lbl">Precio a cobrar</span>
+                    <input className="field" type="number" inputMode="numeric" value={precio} onChange={e=>setPrecio(e.target.value)} placeholder={String(precioBase)} autoFocus style={{ marginBottom:10 }}/>
+                    <div style={{ display:"flex", gap:8 }}>
+                      <button className="btn-sm" style={{ flex:1 }} onClick={()=>{setPrecio("");setEditPrecio(false);}}>Volver a {fmtP(precioBase)}</button>
+                      <button className="btn-sm" style={{ flex:1 }} onClick={()=>setEditPrecio(false)}>Listo</button>
+                    </div>
+                  </div>
+                )}
                 <button className={`btn-main${selSvc?"":" dim"}`} onClick={()=>selSvc&&setStep("pago")}>Continuar</button>
               </div>
             )}
             {step==="pago" && (
               <div className="card fade-up">
                 <div className="card-title">Paso 2 — Cobro</div>
-                <p style={{ fontSize:11, color:"#555", fontStyle:"italic", marginBottom:14 }}>{SVCS.find(x=>x.id===selSvc)?.label} — {fmtP(SVCS.find(x=>x.id===selSvc)?.price)}</p>
+                <p style={{ fontSize:11, color:"#555", fontStyle:"italic", marginBottom:14 }}>{svcSel?.label} — {fmtP(precioFinal)}{precioEditado?" (modificado)":""}</p>
                 <div className="pago-grid">
                   {PAGOS.map(p=>(
                     <div key={p.id} className={`pago-card${selPago===p.id?" active":""}`} onClick={()=>setSelPago(p.id)}>
@@ -527,7 +551,7 @@ export default function App() {
             {step==="confirm" && (
               <div className="card fade-up">
                 <div className="card-title">Paso 4 — Confirmar</div>
-                {[["Servicio",SVCS.find(x=>x.id===selSvc)?.label],["Precio",fmtP(SVCS.find(x=>x.id===selSvc)?.price)],["Cobro",PAGOS.find(x=>x.id===selPago)?.icon+" "+PAGOS.find(x=>x.id===selPago)?.label],["Cliente",cliNom||"—"],["Tel",cliTel||"—"],["Nota",nota||"—"]].map(([k,v])=>(
+                {[["Servicio",svcSel?.label],["Precio",fmtP(precioFinal)+(precioEditado?" ✎":"")],["Cobro",PAGOS.find(x=>x.id===selPago)?.icon+" "+PAGOS.find(x=>x.id===selPago)?.label],["Cliente",cliNom||"—"],["Tel",cliTel||"—"],["Nota",nota||"—"]].map(([k,v])=>(
                   <div key={k} className="cf-row"><span className="ck">{k}</span><span style={{ color:"#fff", fontWeight:500 }}>{v}</span></div>
                 ))}
                 <div style={{ display:"flex", gap:8, marginTop:16 }}>
