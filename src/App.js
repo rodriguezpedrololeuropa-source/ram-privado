@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 
-const API = "https://script.google.com/macros/s/AKfycbw8-ZwQ23GvZufkXLMr_y-Pe49Md_PT4sS5DqiWCY8I0qy8-63E65rtvU2pIZSBI3Zw/exec";
+const API = "https://script.google.com/macros/s/AKfycbzTfoOJo7VjznxdXrb89G2-ytDR-1oMVddZpGQu06pZlYq0Tr1QYaamj-UQYyiS8C0D/exec";
 
 const BARBER_PASS = "ram2024";
 const GASTOS_PASS = "gastos2024";
@@ -185,7 +185,7 @@ export default function App() {
   const [selPago, setSelPago] = useState(null);
   const [precio, setPrecio] = useState(""); const [editPrecio, setEditPrecio] = useState(false);
   const [cliNom, setCliNom] = useState(""); const [cliTel, setCliTel] = useState(""); const [nota, setNota] = useState("");
-  const [gDesc, setGDesc] = useState(""); const [gMonto, setGMonto] = useState("");
+  const [gDesc, setGDesc] = useState(""); const [gMonto, setGMonto] = useState(""); const [gPago, setGPago] = useState("efectivo");
   const [period, setPeriod] = useState("todo");
   const [cliSearch, setCliSearch] = useState("");
   const [cliDet, setCliDet] = useState(null);
@@ -241,8 +241,8 @@ export default function App() {
 
   async function addGasto() {
     if (!gDesc || !gMonto) return;
-    await api("addGasto", { descripcion: gDesc, monto: parseFloat(gMonto) });
-    await loadAll(); setGDesc(""); setGMonto(""); setGOk(true); setTimeout(() => setGOk(false), 2000);
+    await api("addGasto", { descripcion: gDesc, monto: parseFloat(gMonto), pago: gPago });
+    await loadAll(); setGDesc(""); setGMonto(""); setGPago("efectivo"); setGOk(true); setTimeout(() => setGOk(false), 2000);
   }
 
   async function addTurno() {
@@ -299,6 +299,22 @@ export default function App() {
 
   // Precio del servicio: usa el de la lista salvo que se haya cargado uno a mano.
   const svcSel = SVCS.find(x => x.id === selSvc);
+
+  // --- Desglose por metodo de pago, leido de Google Sheets ---
+  // Compara sin distinguir mayusculas para que funcione tanto si la hoja
+  // guarda "efectivo" como "Efectivo".
+  const esPago = (val, id) => String(val || "").toLowerCase().includes(id);
+  const pagoDe = row => row["Metodo Pago"] || row.MetodoPago || row.Metodo || row.Pago || "";
+  const ingPorPago = PAGOS.map(p => {
+    const rows = fS.filter(r => esPago(pagoDe(r), p.id));
+    return { ...p, cant: rows.length, total: rows.reduce((a, b) => a + Number(b.Precio || 0), 0) };
+  });
+  const gstPorPago = PAGOS.map(p => {
+    const rows = fG.filter(g => esPago(pagoDe(g), p.id));
+    return { ...p, cant: rows.length, total: rows.reduce((a, b) => a + Number(b.Monto || 0), 0) };
+  });
+  const gstSinPago = fG.filter(g => !PAGOS.some(p => esPago(pagoDe(g), p.id)))
+    .reduce((a, b) => a + Number(b.Monto || 0), 0);
   const precioBase = svcSel ? svcSel.price : 0;
   const precioFinal = precio !== "" && !isNaN(Number(precio)) ? Number(precio) : precioBase;
   const precioEditado = precio !== "" && Number(precio) !== precioBase;
@@ -392,15 +408,49 @@ export default function App() {
           <input className="field" value={gDesc} onChange={e=>setGDesc(e.target.value)} placeholder="Factura, insumos..."/>
           <span className="field-lbl">Monto</span>
           <input className="field" type="number" value={gMonto} onChange={e=>setGMonto(e.target.value)} placeholder="0"/>
+          <span className="field-lbl">Como se pago</span>
+          <div className="pago-grid">
+            {PAGOS.map(p=>(
+              <div key={p.id} className={`pago-card${gPago===p.id?" active":""}`} onClick={()=>setGPago(p.id)}>
+                <div style={{ fontSize:20, marginBottom:4 }}>{p.icon}</div>
+                <div className="cinzel" style={{ fontSize:9, color:gPago===p.id?"#fff":"#555" }}>{p.label}</div>
+              </div>
+            ))}
+          </div>
           <button className="btn-main" onClick={addGasto} style={{ background:"#0a0a0a", color:"#ff6b6b", border:"1px solid #2a1a1a" }}>Agregar gasto</button>
           {gOk && <p style={{ fontSize:11, color:"#4a9a7a", marginTop:8, textAlign:"center", fontFamily:"'Cinzel',serif" }}>Registrado</p>}
+        </div>
+        <div className="card">
+          <div className="card-title">Desglose por metodo</div>
+          {PAGOS.map((p,i)=>{
+            const ing=ingPorPago[i].total, gst=gstPorPago[i].total, neto=ing-gst;
+            return(
+              <div key={p.id} style={{ padding:"12px 0", borderBottom:i<PAGOS.length-1?"1px solid #111":"none" }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
+                  <span className="cinzel" style={{ fontSize:13, color:"#fff" }}>{p.icon} {p.label}</span>
+                  <span className="cinzel" style={{ fontSize:16, color:neto>=0?"#4a9a7a":"#ff6b6b" }}>{fmtP(neto)}</span>
+                </div>
+                <div style={{ display:"flex", gap:6, alignItems:"center" }}>
+                  <span className="pill pill-g">+{fmtP(ing)}</span>
+                  <span className="pill pill-r">−{fmtP(gst)}</span>
+                  <span style={{ fontSize:10, color:"#333" }}>{ingPorPago[i].cant} serv · {gstPorPago[i].cant} gasto{gstPorPago[i].cant!==1?"s":""}</span>
+                </div>
+              </div>
+            );
+          })}
+          {gstSinPago>0 && (
+            <div style={{ paddingTop:12, borderTop:"1px solid #111", marginTop:4, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+              <span style={{ fontSize:10, color:"#555", fontStyle:"italic" }}>Gastos sin metodo cargado</span>
+              <span className="pill pill-r">{fmtP(gstSinPago)}</span>
+            </div>
+          )}
         </div>
         <div className="card">
           <div className="card-title">Historial ({fG.length})</div>
           {fG.length===0 && <p style={{ fontSize:12, color:"#333", fontStyle:"italic" }}>Sin gastos</p>}
           {fG.map((g,i)=>(
             <div key={i} className="row">
-              <div><div style={{ color:"#fff" }}>{g.Descripcion}</div><div style={{ fontSize:10, color:"#555" }}>{g.Fecha}</div></div>
+              <div><div style={{ color:"#fff" }}>{g.Descripcion}</div><div style={{ fontSize:10, color:"#555" }}>{g.Fecha}{pagoDe(g)?" · "+pagoDe(g):""}</div></div>
               <div style={{ display:"flex", gap:8, alignItems:"center" }}>
                 <span className="pill pill-r">{fmtP(g.Monto)}</span>
                 <button className="btn-danger" onClick={()=>delRow("GASTOS",g.ID)}>x</button>
@@ -660,6 +710,25 @@ export default function App() {
                     <div style={{ display:"flex", justifyContent:"space-between", width:"100%" }}>
                       <span className="cinzel" style={{ fontSize:12, color:"#fff" }}>{sv.label}</span>
                       <div style={{ display:"flex", gap:6 }}><span className="pill">{cnt}x</span><span className="pill pill-g">{fmtP(tot)}</span></div>
+                    </div>
+                    <div className="bar-bg"><div className="bar-fill" style={{ width:pct+"%" }}/></div>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="card">
+              <div className="card-title">Por metodo de pago</div>
+              {ingPorPago.map(p=>{
+                const pct=totIng?Math.round(p.total/totIng*100):0;
+                return(
+                  <div key={p.id} className="row" style={{ flexDirection:"column", alignItems:"flex-start", gap:4 }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", width:"100%" }}>
+                      <span className="cinzel" style={{ fontSize:12, color:"#fff" }}>{p.icon} {p.label}</span>
+                      <div style={{ display:"flex", gap:6, alignItems:"center" }}>
+                        <span style={{ fontSize:10, color:"#555" }}>{pct}%</span>
+                        <span className="pill">{p.cant}x</span>
+                        <span className="pill pill-g">{fmtP(p.total)}</span>
+                      </div>
                     </div>
                     <div className="bar-bg"><div className="bar-fill" style={{ width:pct+"%" }}/></div>
                   </div>
